@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THEN & AGAIN · Story Engine</title>
+<style>
+:root{--bg:#0e0e11;--card:#17171c;--tx:#ececf1;--mu:#9a9aa6;--ac:#e0a43a;--bd:#2a2a33}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:16px;max-width:760px;margin:auto}
+h1{font-size:22px;margin:4px 0}h1 span{color:var(--ac)}.sub{color:var(--mu);margin:0 0 16px}
+label{display:block;color:var(--mu);font-size:12px;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.05em}
+select,input,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font:inherit}
+textarea{min-height:70px}button{background:var(--ac);color:#111;border:0;border-radius:8px;padding:12px 16px;font-weight:700;font-size:15px;width:100%;margin-top:16px}
+button.s{background:var(--bd);color:var(--tx);width:auto;padding:5px 10px;font-size:12px;margin:6px 6px 0 0}button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin:12px 0}
+.tag{color:var(--ac);font-size:12px;font-weight:700;letter-spacing:.06em}.k{color:var(--mu);font-size:12px;margin-top:8px}
+pre{white-space:pre-wrap;margin:2px 0;font:inherit}#st{color:var(--mu);margin:12px 0}.err{color:#ff7a7a}.row{display:flex;gap:8px}
+</style></head><body>
+<h1>THEN <span>&</span> AGAIN</h1><p class="sub">Ancient problems. Modern solutions. Story engine.</p>
+<label>Topic (from Problem Radar atlas)</label><select id="topic"></select>
+<label>Or custom Bible problem (overrides topic)</label>
+<textarea id="custom" placeholder="e.g. Nehemiah rebuilding Jerusalem's wall: how he organized labor, security and funding"></textarea>
+<div class="row"><div style="flex:1"><label>Length (seconds)</label><input id="sec" type="number" value="60" min="20" max="180"></div>
+<div style="flex:1"><label>Access code (if set)</label><input id="acc" type="password"></div></div>
+<button id="go">Generate episode</button><div id="st"></div><div id="out"></div>
+<script>
+const $=id=>document.getElementById(id);let atlas=[];
+fetch("atlas.json").then(r=>r.json()).then(a=>{atlas=a;$("topic").innerHTML=a.map((e,i)=>`<option value="${i}">${e.id}. ${e.topic}</option>`).join("")});
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
+function field(p,k,v){if(!v)return;p.append(el("div","k",k),el("pre","",v))}
+function copy(p,label,text){const b=el("button","s","Copy "+label);b.onclick=()=>{navigator.clipboard.writeText(text);b.textContent="Copied"};p.append(b)}
+async function api(stage,data){const r=await fetch("/api/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({stage,access:$("acc").value,...data})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d}
+$("go").onclick=async()=>{
+  const out=$("out"),st=$("st");out.innerHTML="";$("go").disabled=true;st.className="";
+  try{
+    const c=$("custom").value.trim();
+    const brief=c?{topic:"Custom",biblical_intervention:c,note:"Identify passages, principle and modern problem yourself; quote only what the text actually says."}:atlas[$("topic").value];
+    st.textContent="1/3 Researching modern evidence...";const bridge=await api("bridge",{brief});
+    const b=el("div","card");b.append(el("div","tag","MODERN BRIDGE"),el("pre","",bridge.modern_problem_title+"\n"+bridge.mechanism.join(" > ")));
+    (bridge.stats||[]).forEach(s=>field(b,"STAT",`${s.claim}\n${s.source} ${s.url||""}`));field(b,"COUNTERPOINT",bridge.counterpoint);field(b,"SEARCH SOURCES (verify)",(bridge._sources||[]).join("\n"));
+    if(!bridge.evidence_ok){const w=el("pre","err","Warning: fewer than 2 sourced stats. Verify before publishing.");b.append(w)}out.append(b);
+    st.textContent="2/3 Writing script and scene plan...";const sc=await api("script",{brief,bridge,seconds:+$("sec").value});
+    out.append(Object.assign(el("div","card"),{}));out.lastChild.append(el("div","tag","EPISODE"),el("pre","",sc.title+"\nHook: "+sc.hook));
+    st.textContent="3/3 Building prompts and social pack...";const pr=await api("production",{scenes:sc.scenes,title:sc.title});
+    const byN=Object.fromEntries(pr.prompts.map(p=>[p.n,p]));
+    sc.scenes.forEach(s=>{const d=el("div","card"),p=byN[s.n]||{};d.append(el("div","tag",`SCENE ${String(s.n).padStart(2,"0")} · ${s.beat} · ${s.seconds}s`));
+      field(d,"VOICE",s.voice);field(d,"VISUAL",s.visual);field(d,"GRAPHIC",s.graphic&&s.graphic.type!=="none"?`${s.graphic.type}: ${s.graphic.content}`:"");field(d,"CAMERA",s.camera);field(d,"SOUND",s.sound);
+      if(p.flow_prompt)copy(d,"Flow prompt",p.flow_prompt);if(p.seedance_prompt)copy(d,"Seedance prompt",p.seedance_prompt);out.append(d)});
+    const f=el("div","card");f.append(el("div","tag","CLOSING QUESTION"),el("pre","",sc.closing_question));
+    const so=pr.social||{};field(f,"YOUTUBE",`${so.youtube?.title}\n${so.youtube?.description}`);field(f,"TIKTOK",`${so.tiktok?.caption}\n${(so.tiktok?.hashtags||[]).join(" ")}`);field(f,"INSTAGRAM",`${so.instagram?.caption}\n${(so.instagram?.hashtags||[]).join(" ")}`);
+    copy(f,"voiceover",pr.voiceover);const dl=el("button","s","Download JSON");dl.onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({brief,bridge,script:sc,production:pr},null,2)],{type:"application/json"}));a.download="episode.json";a.click()};f.append(dl);out.append(f);
+    st.textContent="Done.";
+  }catch(e){st.className="err";st.textContent="Error: "+e.message}
+  $("go").disabled=false};
+</script></body></html>
