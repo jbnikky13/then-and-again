@@ -25,7 +25,16 @@ fetch("atlas.json").then(r=>r.json()).then(a=>{atlas=a;$("topic").innerHTML=a.ma
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
 function field(p,k,v){if(!v)return;p.append(el("div","k",k),el("pre","",v))}
 function copy(p,label,text){const b=el("button","s","Copy "+label);b.onclick=()=>{navigator.clipboard.writeText(text);b.textContent="Copied"};p.append(b)}
-async function api(stage,data){const r=await fetch("/api/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({stage,access:$("acc").value,...data})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d}
+async function api(stage,data){
+  const r=await fetch("/api/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({stage,access:$("acc").value,...data})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){
+    const e=new Error(d.error||"Request failed");
+    e.code=d.code;e.retryable=d.retryable;e.status=r.status;
+    throw e;
+  }
+  return d;
+}
 $("go").onclick=async()=>{
   const out=$("out"),st=$("st");out.innerHTML="";$("go").disabled=true;st.className="";
   try{
@@ -35,10 +44,10 @@ $("go").onclick=async()=>{
     const b=el("div","card");b.append(el("div","tag","MODERN BRIDGE"),el("pre","",bridge.modern_problem_title+"\n"+bridge.mechanism.join(" > ")));
     (bridge.stats||[]).forEach(s=>field(b,"STAT",`${s.claim}\n${s.source} ${s.url||""}`));field(b,"COUNTERPOINT",bridge.counterpoint);field(b,"SEARCH SOURCES (verify)",(bridge._sources||[]).join("\n"));
     if(!bridge.evidence_ok){const w=el("pre","err","Warning: fewer than 2 sourced stats. Verify before publishing.");b.append(w)}out.append(b);
-    st.textContent="2/3 Writing script and scene plan...";const sc=await api("script",{brief,bridge,seconds:+$("sec").value});
+    st.textContent="2/3 Writing script, scenes, prompts and social pack...";const sc=await api("story",{brief,bridge,seconds:+$("sec").value});
     out.append(Object.assign(el("div","card"),{}));out.lastChild.append(el("div","tag","EPISODE"),el("pre","",sc.title+"\nHook: "+sc.hook));
-    st.textContent="3/3 Building prompts and social pack...";const pr=await api("production",{scenes:sc.scenes,title:sc.title});
-    const byN=Object.fromEntries(pr.prompts.map(p=>[p.n,p]));
+    st.textContent="3/3 Building the episode package...";const pr=sc;
+    const byN=Object.fromEntries((pr.prompts||[]).map(p=>[p.n,p]));
     sc.scenes.forEach(s=>{const d=el("div","card"),p=byN[s.n]||{};d.append(el("div","tag",`SCENE ${String(s.n).padStart(2,"0")} · ${s.beat} · ${s.seconds}s`));
       field(d,"VOICE",s.voice);field(d,"VISUAL",s.visual);field(d,"GRAPHIC",s.graphic&&s.graphic.type!=="none"?`${s.graphic.type}: ${s.graphic.content}`:"");field(d,"CAMERA",s.camera);field(d,"SOUND",s.sound);
       if(p.flow_prompt)copy(d,"Flow prompt",p.flow_prompt);if(p.seedance_prompt)copy(d,"Seedance prompt",p.seedance_prompt);out.append(d)});
@@ -46,6 +55,13 @@ $("go").onclick=async()=>{
     const so=pr.social||{};field(f,"YOUTUBE",`${so.youtube?.title}\n${so.youtube?.description}`);field(f,"TIKTOK",`${so.tiktok?.caption}\n${(so.tiktok?.hashtags||[]).join(" ")}`);field(f,"INSTAGRAM",`${so.instagram?.caption}\n${(so.instagram?.hashtags||[]).join(" ")}`);
     copy(f,"voiceover",pr.voiceover);const dl=el("button","s","Download JSON");dl.onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({brief,bridge,script:sc,production:pr},null,2)],{type:"application/json"}));a.download="episode.json";a.click()};f.append(dl);out.append(f);
     st.textContent="Done.";
-  }catch(e){st.className="err";st.textContent="Error: "+e.message}
+  }catch(e){
+    st.className="err";
+    const code=e.code?` [${e.code}]`:"";
+    if(e.code==="RATE_LIMITED") st.textContent="Gemini is rate-limited right now. The server retried automatically; wait a little and try again.";
+    else if(e.code==="QUOTA_EXHAUSTED") st.textContent="Gemini daily quota is exhausted for this project. This is not a script bug; the quota must reset or the Gemini project/model must be changed.";
+    else if(e.code==="AUTH_ERROR") st.textContent="Gemini authentication failed. Check GEMINI_API_KEY in Vercel.";
+    else st.textContent="Error"+code+": "+e.message;
+  }
   $("go").disabled=false};
 </script></body></html>
