@@ -2,7 +2,7 @@
 // The API deliberately keeps Gemini calls server-side and uses a small number of
 // requests so one episode does not burn through the project's rate limits.
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 const MAX_RETRIES = 2;
 
 const SYSTEM = `You are the story engine for THEN & AGAIN, a short-form media brand: "Ancient problems. Modern solutions."
